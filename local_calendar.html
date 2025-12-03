@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plánovač 2025-2026</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Date-fns -->
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@3.6.0/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@3.6.0/locale/sk/cdn.min.js"></script>
+
+    <style>
+      body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+      /* Simple loading spinner */
+      .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 50px auto; }
+      @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+      #error-message { display: none; background: #fee2e2; color: #b91c1c; padding: 20px; border-radius: 8px; margin: 20px; border: 1px solid #f87171; }
+    </style>
+</head>
+<body>
+    <!-- Error Container -->
+    <div id="error-message">
+        <h2 class="text-xl font-bold mb-2">Chyba aplikácie / Application Error</h2>
+        <pre id="error-text" class="whitespace-pre-wrap"></pre>
+        <p class="mt-4 text-sm">Skontrolujte pripojenie na internet. Táto aplikácia potrebuje stiahnuť React a Date-fns knižnice.</p>
+    </div>
+
+    <div id="root">
+        <div class="loader"></div>
+        <p style="text-align: center; color: #666;">Načítavam kalendár...</p>
+    </div>
+
+    <!-- Error Handler Script -->
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            document.getElementById('root').style.display = 'none';
+            const errorDiv = document.getElementById('error-message');
+            const errorText = document.getElementById('error-text');
+            errorDiv.style.display = 'block';
+            errorText.textContent = `Error: ${message}\nLine: ${lineno}\nSource: ${source}`;
+        };
+    </script>
+
+    <script type="text/babel" data-presets="react,typescript">
+        // --- Icons (Inline SVGs to avoid dependency issues) ---
+        const IconCalculator = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/>
+            </svg>
+        );
+
+        const IconArrowRight = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+            </svg>
+        );
+
+        const IconCalendarClock = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h5"/><path d="M17.5 17.5 16 16.25V14"/><path d="M22 16a6 6 0 1 1-12 0 6 6 0 0 1 12 0Z"/>
+            </svg>
+        );
+
+        const IconCalendar = ({ className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>
+            </svg>
+        );
+
+        // --- Globals & Utils ---
+        const { useState, useMemo, useEffect } = React;
+        
+        // Safe access to dateFns
+        if (typeof dateFns === 'undefined') {
+            throw new Error("date-fns library failed to load.");
+        }
+
+        const { 
+            addWeeks, format, parseISO, isValid, addMonths, 
+            startOfMonth, endOfMonth, startOfWeek, endOfWeek, 
+            eachDayOfInterval, isSameMonth, getISOWeek, isToday, isWeekend 
+        } = dateFns;
+        
+        // Try to get Slovak locale, fallback to undefined (English) if missing
+        const skLocale = dateFns.locale?.sk || undefined;
+
+        // --- Components ---
+
+        const DateCalculator = () => {
+            const [inputDate, setInputDate] = useState('');
+
+            // Calculate result date
+            const resultDate = inputDate ? addWeeks(parseISO(inputDate), 10) : null;
+            const isDateValid = resultDate && isValid(resultDate);
+
+            return (
+                <div className="bg-white rounded-2xl shadow-lg border border-blue-100 overflow-hidden">
+                    <div className="bg-blue-600 p-4 flex items-center gap-2">
+                        <IconCalculator className="w-5 h-5 text-blue-100" />
+                        <h2 className="text-white font-semibold text-lg">Kalkulačka +10 týždňov</h2>
+                    </div>
+                    
+                    <div className="p-6 space-y-6">
+                        <div>
+                            <label htmlFor="start-date" className="block text-sm font-medium text-gray-700 mb-2">
+                                Vyberte počiatočný dátum
+                            </label>
+                            <input
+                                id="start-date"
+                                type="date"
+                                value={inputDate}
+                                onChange={(e) => setInputDate(e.target.value)}
+                                className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all text-gray-800"
+                            />
+                        </div>
+
+                        <div className="relative">
+                            <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                                <div className="w-full border-t border-gray-200 border-dashed" />
+                            </div>
+                            <div className="relative flex justify-center">
+                                <span className="bg-white px-2 text-gray-400">
+                                    <IconArrowRight className="w-5 h-5" />
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className={`rounded-xl p-4 transition-colors ${isDateValid ? 'bg-blue-50 border border-blue-100' : 'bg-gray-50 border border-gray-100'}`}>
+                            <div className="flex items-start gap-3">
+                                <div className={`p-2 rounded-lg ${isDateValid ? 'bg-blue-200 text-blue-700' : 'bg-gray-200 text-gray-500'}`}>
+                                    <IconCalendarClock className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium text-gray-500">Výsledný dátum</p>
+                                    <div className="mt-1">
+                                        {isDateValid ? (
+                                            <>
+                                                <p className="text-xl font-bold text-gray-900">
+                                                    {format(resultDate, 'd. MMMM yyyy', { locale: skLocale })}
+                                                </p>
+                                                <p className="text-sm text-blue-600 mt-1">
+                                                    (Týždeň {format(resultDate, 'w', { locale: skLocale })})
+                                                </p>
+                                            </>
+                                        ) : (
+                                            <p className="text-gray-400 italic">Zadajte dátum...</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const MonthView = ({ date }) => {
+            const monthStart = startOfMonth(date);
+            const monthEnd = endOfMonth(monthStart);
+            
+            // Create grid range (including days from prev/next months to fill rows)
+            // Use skLocale if available, otherwise default
+            const startDate = startOfWeek(monthStart, { locale: skLocale, weekStartsOn: 1 });
+            const endDate = endOfWeek(monthEnd, { locale: skLocale, weekStartsOn: 1 });
+            
+            const calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
+
+            // Group days into weeks
+            const weeks = [];
+            let currentWeek = [];
+
+            calendarDays.forEach((day) => {
+                currentWeek.push(day);
+                if (currentWeek.length === 7) {
+                    weeks.push(currentWeek);
+                    currentWeek = [];
+                }
+            });
+
+            const monthName = format(monthStart, 'MMMM yyyy', { locale: skLocale });
+            const capitalizedMonthName = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+
+            return (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden break-inside-avoid">
+                    {/* Month Header */}
+                    <div className="bg-gray-50 border-b border-gray-100 px-6 py-4 flex justify-between items-center">
+                        <h3 className="text-xl font-bold text-gray-800 tracking-tight">
+                            {capitalizedMonthName}
+                        </h3>
+                        <span className="text-xs font-semibold uppercase text-gray-400 tracking-wider bg-gray-100 px-2 py-1 rounded">
+                            Mesiac {format(monthStart, 'M')}
+                        </span>
+                    </div>
+
+                    <div className="p-4 md:p-6 overflow-x-auto">
+                        <table className="w-full min-w-[500px] table-fixed border-collapse">
+                            <thead>
+                                <tr>
+                                    {/* Week Number Column Header */}
+                                    <th className="w-12 p-2 text-xs font-semibold text-gray-400 text-center uppercase border-b border-gray-100 bg-white">
+                                        Týž.
+                                    </th>
+                                    {['Po', 'Ut', 'St', 'Št', 'Pi', 'So', 'Ne'].map((day, i) => (
+                                        <th 
+                                            key={day} 
+                                            className={`p-2 text-sm font-semibold text-center border-b border-gray-100 ${i >= 5 ? 'text-red-400' : 'text-gray-600'}`}
+                                        >
+                                            {day}
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {weeks.map((week, weekIndex) => {
+                                    // Get ISO week number from the Thursday of the week
+                                    const thursdayOfWeek = week[3]; 
+                                    const weekNumber = getISOWeek(thursdayOfWeek);
+
+                                    return (
+                                        <tr key={weekIndex} className="group hover:bg-gray-50 transition-colors">
+                                            {/* Week Number Cell */}
+                                            <td className="p-2 text-center border-r border-gray-100">
+                                                <span className="inline-block text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full w-full">
+                                                    {weekNumber}.
+                                                </span>
+                                            </td>
+                                            
+                                            {/* Days Cells */}
+                                            {week.map((day) => {
+                                                const isCurrentMonth = isSameMonth(day, monthStart);
+                                                const isCurrentDay = isToday(day);
+                                                const isWeekendDay = isWeekend(day);
+                                                
+                                                return (
+                                                    <td key={day.toISOString()} className="p-1 md:p-2 h-16 md:h-20 border-b border-gray-50 align-top">
+                                                        <div 
+                                                            className={`
+                                                                h-full w-full rounded-lg p-1.5 flex flex-col items-start justify-between transition-all
+                                                                ${!isCurrentMonth ? 'opacity-30 bg-gray-50' : ''}
+                                                                ${isCurrentDay ? 'bg-blue-600 shadow-md transform scale-105 z-10' : ''}
+                                                                ${isWeekendDay && isCurrentMonth && !isCurrentDay ? 'bg-red-50/30' : ''}
+                                                            `}
+                                                        >
+                                                            <span 
+                                                                className={`
+                                                                    text-sm font-medium leading-none
+                                                                    ${isCurrentDay ? 'text-white' : isWeekendDay ? 'text-red-500' : 'text-gray-700'}
+                                                                `}
+                                                            >
+                                                                {format(day, 'd')}
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const CalendarList = () => {
+            // Define the range: December 2025 to December 2026
+            const months = useMemo(() => {
+                const startDate = parseISO('2025-12-01');
+                const monthList = [];
+                
+                // We want Dec 2025 through Dec 2026.
+                // Dec 2025 is month 0. Dec 2026 is month 12. Total 13 months.
+                for (let i = 0; i <= 12; i++) {
+                    monthList.push(addMonths(startDate, i));
+                }
+                return monthList;
+            }, []);
+
+            return (
+                <div className="flex flex-col gap-8 pb-12">
+                    {months.map((date) => (
+                        <MonthView key={date.toISOString()} date={date} />
+                    ))}
+                </div>
+            );
+        };
+
+        const App = () => {
+            return (
+                <div className="min-h-screen p-4 md:p-8 max-w-5xl mx-auto">
+                    <header className="mb-8 text-center md:text-left flex items-center justify-center md:justify-start gap-3">
+                        <div className="p-3 bg-blue-600 rounded-lg shadow-lg">
+                            <IconCalendar className="w-8 h-8 text-white" />
+                        </div>
+                        <div>
+                            <h1 className="text-3xl font-bold text-gray-900">Plánovač 2025 - 2026</h1>
+                            <p className="text-gray-500 mt-1">Kalendár a 10-týždňová kalkulačka</p>
+                        </div>
+                    </header>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                        {/* Sticky Sidebar / Top Section for Calculator */}
+                        <div className="lg:col-span-4 lg:sticky lg:top-8 h-fit space-y-6">
+                            <DateCalculator />
+                            
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hidden lg:block">
+                                <h3 className="font-semibold text-gray-800 mb-2">O aplikácii</h3>
+                                <p className="text-sm text-gray-600 leading-relaxed">
+                                    Tento kalendár zobrazuje prehľad od decembra 2025 do decembra 2026.
+                                    Každý riadok začína číslom týždňa pre lepšiu orientáciu.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Main Calendar Feed */}
+                        <div className="lg:col-span-8">
+                            <CalendarList />
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Initialize React App
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
